@@ -134,7 +134,7 @@ class System:
                 if self.waypoint_manager.mission_finished():
                     self.event_manager.publish(Events.MissionFinished)
                 else:
-                    self.send_vector()
+                    self.send_running_state()
 
             elapsed = (datetime.datetime.now() - start).total_seconds()
             remaining = self.desired_time_per_cycle - elapsed
@@ -161,12 +161,9 @@ class System:
 
             if name == WAYPOINTS:
                 self.event_manager.publish(Events.WaypointsReceived, value)
-            
-            if name == TAKEOFF:
-                self.event_manager.publish(Events.TakeOff)
-            
-            if name == MISSION_START:
-                self.event_manager.publish(Events.MissionStart)
+
+            if name == WAYPOINT_REACHED:
+                self.event_manager.publish(Events.WaypointReached)            
 
     def receive_from_drone(self, data_list: List[Tuple[str, Any]]):
         for name, value in data_list:
@@ -201,15 +198,15 @@ class System:
 
         if not self.mission_started:
             return
-        
-        if self.waypoint_manager.waypoint_reached(gps_position):
-            self.event_manager.publish(Events.WaypointReached, gps_position)
 
     def on_waypoint_reached(self, gps: np.ndarray):
         print(f"Waypoint {self.waypoint_manager.current_waypoint()} reached")
         last_wp = self.waypoint_manager.last_waypoint()
 
         if not self.time_manager.in_range(gps, last_wp):
+            
+            data = self.protocol.encode(2, RUNNING_STATE)
+            self.drone_connection.send(data)
             self.event_manager.publish(Events.EmergencyLanding)
         self.time_manager.update_check_time()
 
@@ -223,47 +220,26 @@ class System:
             self.waypoint_manager.last_waypoint(),
             self.direction_vector
         ):
+            data = self.protocol.encode(1, RUNNING_STATE)
+            self.drone_connection.send(data)
             self.event_manager.publish(Events.EmergencyLanding)
-
-    def on_mission_finished(self):
-        self.event_manager.publish(Events.Landing)
-        self.stop()
 
     def on_mission_start(self):
         self.mission_started = True
         self.waypoint_manager.start_mission()
-
-    def on_takeoff(self):
-        data = self.protocol.encode(1, TAKEOFF)
-        self.drone_connection.send(data)
-
-    def on_landing(self):
-        data = self.protocol.encode(1, LAND)
-        self.drone_connection.send(data)
-
+        
     def on_emergency_landing(self):
         print("Emergency landing")
         data = self.protocol.encode(1, EMERGENCY_LANDING)
         self.drone_connection.send(data)
         self.stop()
 
-    def send_vector(self):
-
-        vec = self.waypoint_manager.waypoint2vector(
-            self.waypoint_manager.current_waypoint(),
-            self.current_position
-        )
-        self.direction_vector = vec
-
-        data = self.protocol.encode(self.protocol.encode_point(vec), VECTOR)
-        self.drone_connection.send(data)
-
-        data = self.protocol.encode(
-            self.waypoint_manager.desired_velocity, DESIRED_VELOCITY)
+    def send_running_state(self):
+        data = self.protocol.encode(0, RUNNING_STATE)
         self.drone_connection.send(data)
 
     def stop(self):
         self.drone_connection.clean()
         self.connection.clean()
         self.running = False
-        
+    

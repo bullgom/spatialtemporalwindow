@@ -95,21 +95,10 @@ class DroneServer(Server):
                             self.takeoff_state = False
                             print("Landing")
 
-                        if name == EMERGENCY_LANDING:
-                            self.takeoff_state = False
-                            print("Emergency Landing")
-
-                        if name == VECTOR:
-                            vec = self.protocol.decode_point(value)
-                            self.direction = vec
-
-                        if name == DESIRED_VELOCITY:
-                            self.velocity = value
+                        if name == RUNNING_STATE:
+                            print(f"Running state: {value}")
 
                 step_elapsed = (datetime.now() - start).total_seconds()
-
-                if self.takeoff_state:
-                    self.move(step_elapsed)
 
                 elapsed += step_elapsed
                 if elapsed >= self.gps_period:
@@ -123,10 +112,7 @@ class DroneServer(Server):
                     elapsed = 0.
                     
             self.clean()
-
-    def move(self, time: float):
-        self.position += self.direction * self.velocity * time
-
+            
     def randomize_gps(self, gps: np.ndarray) -> np.ndarray:
         return gps + np.random.normal(loc=self.mean, scale=self.sigma, size=(3,))
 
